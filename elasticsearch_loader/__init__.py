@@ -123,6 +123,19 @@ def cli(ctx, **opts):
             ctx.fail('No subcommand specified via command line / task file,\navailable commands are: {}'.format(", ".join(commands)))
 
 
+class TypedDictReader(csv.DictReader):
+    def __init__(self, f, fieldtypes=None, *args, **kwargs):
+        super().__init__(f, *args, **kwargs)
+        self._fieldtypes = fieldtypes
+
+    def __next__(self):
+        d = csv.DictReader.__next__(self)
+        if len(self._fieldtypes) >= len(d):
+            values_and_req_types = map(d.get, self._fieldnames)
+            apply_conversion = (x(y) for (x, y) in zip(self._fieldtypes, values_and_req_types))
+        return dict(zip(self._fieldnames, apply_conversion))
+
+
 @cli.command(name='csv')
 @click.argument('files', type=Stream(file_mode='rU'), nargs=-1, required=True)
 @click.option('--delimiter', default=',', type=str, help='Default ,')
@@ -130,7 +143,10 @@ def cli(ctx, **opts):
 def _csv(ctx, files, delimiter):
     if delimiter == '\\t':
         delimiter = '\t'
-    lines = chain(*(csv.DictReader(x, delimiter=str(delimiter)) for x in files))
+    # lines = chain(*(csv.DictReader(x, delimiter=str(delimiter)) for x in files))
+    fieldtypes = [str] + [int] * 8
+    fieldtypes[6] = float
+    lines = chain(*(TypedDictReader(x, fieldtypes=fieldtypes, delimiter=str(delimiter)) for x in files))
     load(lines, ctx.obj)
 
 
